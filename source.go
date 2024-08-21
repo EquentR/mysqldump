@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/xwb1989/sqlparser"
 	"io"
 	"log"
 	"strings"
@@ -119,8 +120,11 @@ func Source(dsn string, reader io.Reader, opts ...SourceOption) error {
 		return err
 	}
 
+	tokens := sqlparser.NewTokenizer(r)
+
 	for {
-		line, err := r.ReadString(';')
+		// line, err := r.ReadString(';')
+		stmt, err := sqlparser.ParseNext(tokens)
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -128,8 +132,9 @@ func Source(dsn string, reader io.Reader, opts ...SourceOption) error {
 			log.Printf("[error] %v\n", err)
 			return err
 		}
+		ssql := sqlparser.String(stmt)
 
-		ssql := string(line)
+		//ssql := string(line)
 
 		// 删除末尾的换行符
 		ssql = trim(ssql)
