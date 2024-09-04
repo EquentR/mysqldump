@@ -18,6 +18,11 @@ func init() {
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
 }
 
+var (
+	noAnno     = false
+	withDbName = ""
+)
+
 type dumpOption struct {
 	// 导出表数据
 	isData bool
@@ -28,6 +33,8 @@ type dumpOption struct {
 	isAllTable bool
 	// 是否删除表
 	isDropTable bool
+
+	noAnno bool
 
 	// writer 默认为 os.Stdout
 	writer io.Writer
@@ -70,6 +77,19 @@ func WithWriter(writer io.Writer) DumpOption {
 	}
 }
 
+func WithNoAnnotation() DumpOption {
+	return func(option *dumpOption) {
+		option.noAnno = true
+		noAnno = true
+	}
+}
+
+func WithDbName(dbName string) DumpOption {
+	return func(option *dumpOption) {
+		withDbName = dbName
+	}
+}
+
 func Dump(dsn string, opts ...DumpOption) error {
 	// 打印开始
 	start := time.Now()
@@ -102,11 +122,13 @@ func Dump(dsn string, opts ...DumpOption) error {
 	defer buf.Flush()
 
 	// 打印 Header
-	_, _ = buf.WriteString("-- ----------------------------\n")
-	_, _ = buf.WriteString("-- MySQL Database Dump\n")
-	_, _ = buf.WriteString("-- Start Time: " + start.Format("2006-01-02 15:04:05") + "\n")
-	_, _ = buf.WriteString("-- ----------------------------\n")
-	_, _ = buf.WriteString("\n\n")
+	if !noAnno {
+		_, _ = buf.WriteString("-- ----------------------------\n")
+		_, _ = buf.WriteString("-- MySQL Database Dump\n")
+		_, _ = buf.WriteString("-- Start Time: " + start.Format("2006-01-02 15:04:05") + "\n")
+		_, _ = buf.WriteString("-- ----------------------------\n")
+		_, _ = buf.WriteString("\n\n")
+	}
 
 	// 连接数据库
 	db, err := sql.Open("mysql", dsn)
@@ -166,13 +188,13 @@ func Dump(dsn string, opts ...DumpOption) error {
 	}
 
 	// 导出每个表的结构和数据
-
-	_, _ = buf.WriteString("-- ----------------------------\n")
-	_, _ = buf.WriteString("-- Dumped by mysqldump\n")
-	_, _ = buf.WriteString("-- Cost Time: " + time.Since(start).String() + "\n")
-	_, _ = buf.WriteString("-- ----------------------------\n")
+	if !o.noAnno {
+		_, _ = buf.WriteString("-- ----------------------------\n")
+		_, _ = buf.WriteString("-- Dumped by mysqldump\n")
+		_, _ = buf.WriteString("-- Cost Time: " + time.Since(start).String() + "\n")
+		_, _ = buf.WriteString("-- ----------------------------\n")
+	}
 	buf.Flush()
-
 	return nil
 }
 
@@ -183,7 +205,17 @@ func getCreateTableSQL(db *sql.DB, table string) (string, error) {
 		return "", err
 	}
 	// IF NOT EXISTS
-	createTableSQL = strings.Replace(createTableSQL, "CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1)
+	if withDbName != "" {
+		createTableSQL = strings.Replace(createTableSQL,
+			"CREATE TABLE ",
+			fmt.Sprintf("CREATE TABLE IF NOT EXISTS `%s`.", withDbName),
+			1)
+	} else {
+		createTableSQL = strings.Replace(createTableSQL,
+			"CREATE TABLE",
+			"CREATE TABLE IF NOT EXISTS",
+			1)
+	}
 	return createTableSQL, nil
 }
 
@@ -208,10 +240,11 @@ func getAllTables(db *sql.DB) ([]string, error) {
 
 func writeTableStruct(db *sql.DB, table string, buf *bufio.Writer) error {
 	// 导出表结构
-	_, _ = buf.WriteString("-- ----------------------------\n")
-	_, _ = buf.WriteString(fmt.Sprintf("-- Table structure for %s\n", table))
-	_, _ = buf.WriteString("-- ----------------------------\n")
-
+	if !noAnno {
+		_, _ = buf.WriteString("-- ----------------------------\n")
+		_, _ = buf.WriteString(fmt.Sprintf("-- Table structure for %s\n", table))
+		_, _ = buf.WriteString("-- ----------------------------\n")
+	}
 	createTableSQL, err := getCreateTableSQL(db, table)
 	if err != nil {
 		log.Printf("[error] %v \n", err)
@@ -230,9 +263,11 @@ func writeTableStruct(db *sql.DB, table string, buf *bufio.Writer) error {
 func writeTableData(db *sql.DB, table string, buf *bufio.Writer) error {
 
 	// 导出表数据
-	_, _ = buf.WriteString("-- ----------------------------\n")
-	_, _ = buf.WriteString(fmt.Sprintf("-- Records of %s\n", table))
-	_, _ = buf.WriteString("-- ----------------------------\n")
+	if !noAnno {
+		_, _ = buf.WriteString("-- ----------------------------\n")
+		_, _ = buf.WriteString(fmt.Sprintf("-- Records of %s\n", table))
+		_, _ = buf.WriteString("-- ----------------------------\n")
+	}
 
 	lineRows, err := db.Query(fmt.Sprintf("SELECT * FROM `%s`", table))
 	if err != nil {
@@ -269,7 +304,12 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer) error {
 	}
 
 	for _, row := range values {
-		ssql := "INSERT INTO `" + table + "` VALUES ("
+		var ssql string
+		if withDbName != "" {
+			ssql = fmt.Sprintf("INSERT INTO `%s`.`%s` VALUES (", withDbName, table)
+		} else {
+			ssql = fmt.Sprintf("INSERT INTO `%s` VALUES (", table)
+		}
 
 		for i, col := range row {
 			if col == nil {
