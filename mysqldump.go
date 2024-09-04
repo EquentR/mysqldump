@@ -19,8 +19,9 @@ func init() {
 }
 
 var (
-	noAnno     = false
-	withDbName = ""
+	noAnno      = false
+	withDbName  = ""
+	needColName = false
 )
 
 type dumpOption struct {
@@ -87,6 +88,12 @@ func WithNoAnnotation() DumpOption {
 func WithDbName(dbName string) DumpOption {
 	return func(option *dumpOption) {
 		withDbName = dbName
+	}
+}
+
+func WithColName() DumpOption {
+	return func(option *dumpOption) {
+		needColName = true
 	}
 }
 
@@ -306,10 +313,20 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer) error {
 	for _, row := range values {
 		var ssql string
 		if withDbName != "" {
-			ssql = fmt.Sprintf("INSERT INTO `%s`.`%s` VALUES (", withDbName, table)
+			ssql = fmt.Sprintf("INSERT INTO `%s`.`%s`", withDbName, table)
 		} else {
-			ssql = fmt.Sprintf("INSERT INTO `%s` VALUES (", table)
+			ssql = fmt.Sprintf("INSERT INTO `%s`", table)
 		}
+
+		if needColName {
+			ssql = ssql + "("
+			for _, col := range columns {
+				ssql += fmt.Sprintf("`%s`,", col)
+			}
+			ssql = strings.TrimRight(ssql, ",") + ")"
+		}
+
+		ssql = ssql + " VALUES ("
 
 		for i, col := range row {
 			if col == nil {
