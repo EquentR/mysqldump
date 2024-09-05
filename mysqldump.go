@@ -425,6 +425,7 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer) error {
 			}
 		}
 		ssql += ");\n"
+		ssql = strings.ReplaceAll(ssql, "\\", "\\\\")
 		if useBinary {
 			pk := NewPackage([]byte(ssql), DML)
 			b, _ := pk.Bytes()
