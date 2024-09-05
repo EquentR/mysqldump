@@ -405,7 +405,7 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer) error {
 					replace = strings.ReplaceAll(replace, "\\", "\\\\")
 					ssql += fmt.Sprintf("'%s'", replace)
 				case "BIT", "BINARY", "VARBINARY", "TINYBLOB", "BLOB", "MEDIUMBLOB", "LONGBLOB":
-					ssql += fmt.Sprintf("0x%X", col)
+					ssql += fmt.Sprintf("X'%X'", col)
 				case "ENUM", "SET":
 					ssql += fmt.Sprintf("'%s'", col)
 				case "BOOL", "BOOLEAN":
