@@ -22,6 +22,7 @@ var (
 	noAnno      = false
 	withDbName  = ""
 	needColName = false
+	useBinary   = false
 )
 
 type dumpOption struct {
@@ -97,6 +98,12 @@ func WithColName() DumpOption {
 	}
 }
 
+func WithBinary() DumpOption {
+	return func(option *dumpOption) {
+		useBinary = true
+	}
+}
+
 func Dump(dsn string, opts ...DumpOption) error {
 	// 打印开始
 	start := time.Now()
@@ -129,7 +136,7 @@ func Dump(dsn string, opts ...DumpOption) error {
 	defer buf.Flush()
 
 	// 打印 Header
-	if !noAnno {
+	if !noAnno && !useBinary {
 		_, _ = buf.WriteString("-- ----------------------------\n")
 		_, _ = buf.WriteString("-- MySQL Database Dump\n")
 		_, _ = buf.WriteString("-- Start Time: " + start.Format("2006-01-02 15:04:05") + "\n")
@@ -195,7 +202,7 @@ func Dump(dsn string, opts ...DumpOption) error {
 	}
 
 	// 导出每个表的结构和数据
-	if !o.noAnno {
+	if !o.noAnno && !useBinary {
 		_, _ = buf.WriteString("-- ----------------------------\n")
 		_, _ = buf.WriteString("-- Dumped by mysqldump\n")
 		_, _ = buf.WriteString("-- Cost Time: " + time.Since(start).String() + "\n")
@@ -247,7 +254,7 @@ func getAllTables(db *sql.DB) ([]string, error) {
 
 func writeTableStruct(db *sql.DB, table string, buf *bufio.Writer) error {
 	// 导出表结构
-	if !noAnno {
+	if !noAnno && !useBinary {
 		_, _ = buf.WriteString("-- ----------------------------\n")
 		_, _ = buf.WriteString(fmt.Sprintf("-- Table structure for %s\n", table))
 		_, _ = buf.WriteString("-- ----------------------------\n")
@@ -257,11 +264,17 @@ func writeTableStruct(db *sql.DB, table string, buf *bufio.Writer) error {
 		log.Printf("[error] %v \n", err)
 		return err
 	}
-	_, _ = buf.WriteString(createTableSQL)
-	_, _ = buf.WriteString(";")
+	if useBinary {
+		pk := NewPackage([]byte(createTableSQL+";"), DDL)
+		b, _ := pk.Bytes()
+		_, _ = buf.Write(b)
+	} else {
+		_, _ = buf.WriteString(createTableSQL)
+		_, _ = buf.WriteString(";")
 
-	_, _ = buf.WriteString("\n\n")
-	_, _ = buf.WriteString("\n\n")
+		_, _ = buf.WriteString("\n\n")
+		_, _ = buf.WriteString("\n\n")
+	}
 	return nil
 }
 
@@ -270,7 +283,7 @@ func writeTableStruct(db *sql.DB, table string, buf *bufio.Writer) error {
 func writeTableData(db *sql.DB, table string, buf *bufio.Writer) error {
 
 	// 导出表数据
-	if !noAnno {
+	if !noAnno && !useBinary {
 		_, _ = buf.WriteString("-- ----------------------------\n")
 		_, _ = buf.WriteString(fmt.Sprintf("-- Records of %s\n", table))
 		_, _ = buf.WriteString("-- ----------------------------\n")
@@ -412,9 +425,17 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer) error {
 			}
 		}
 		ssql += ");\n"
-		_, _ = buf.WriteString(ssql)
+		if useBinary {
+			pk := NewPackage([]byte(ssql), DML)
+			b, _ := pk.Bytes()
+			_, _ = buf.Write(b)
+		} else {
+			_, _ = buf.WriteString(ssql)
+		}
 	}
 
-	_, _ = buf.WriteString("\n\n")
+	if !useBinary {
+		_, _ = buf.WriteString("\n\n")
+	}
 	return nil
 }
