@@ -401,7 +401,9 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer) error {
 					}
 					ssql += string(t)
 				case "CHAR", "VARCHAR", "TINYTEXT", "TEXT", "MEDIUMTEXT", "LONGTEXT":
-					ssql += fmt.Sprintf("'%s'", strings.Replace(fmt.Sprintf("%s", col), "'", "''", -1))
+					replace := strings.Replace(fmt.Sprintf("%s", col), "'", "''", -1)
+					replace = strings.ReplaceAll(replace, "\\", "\\\\")
+					ssql += fmt.Sprintf("'%s'", replace)
 				case "BIT", "BINARY", "VARBINARY", "TINYBLOB", "BLOB", "MEDIUMBLOB", "LONGBLOB":
 					ssql += fmt.Sprintf("0x%X", col)
 				case "ENUM", "SET":
@@ -425,7 +427,6 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer) error {
 			}
 		}
 		ssql += ");\n"
-		ssql = strings.ReplaceAll(ssql, "\\", "\\\\")
 		if useBinary {
 			pk := NewPackage([]byte(ssql), DML)
 			b, _ := pk.Bytes()
